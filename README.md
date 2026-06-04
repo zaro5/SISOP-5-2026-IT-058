@@ -400,3 +400,54 @@ done
 
 echo "[+] Done! Backup saved as: ${BACKUP_NAME}"
 ```
+
+Selanjutnya buatlah file `qemu.sh`, file ini berfungsi untuk menjalankan OS yang sudah dibuat dengan emulator QEMU. File ini bisa dijalankan dengan `-- single`, `--multi`, dan `--all`.
+
+
+#!/bin/bash
+set -e
+
+BZIMAGE="osboot/bzImage"
+SINGLE="osboot/single.gz"
+MULTI="osboot/multi.gz"
+ISO="osboot/farewell.iso"
+
+QEMU="qemu-system-x86_64"
+QEMU_ARGS="-m 512M -nographic -serial mon:stdio \
+  -netdev user,id=net0 -device e1000,netdev=net0"
+
+usage() {
+  echo "Usage: $0 [--single | --multi | --all]"
+  exit 1
+}
+
+case "$1" in
+  --single)
+    echo "[*] Booting single-user filesystem..."
+    $QEMU $QEMU_ARGS \
+      -kernel "$BZIMAGE" \
+      -initrd "$SINGLE" \
+      -append "console=ttyS0 rdinit=/init"
+    ;;
+
+  --multi)
+    echo "[*] Booting multi-user filesystem..."
+    $QEMU $QEMU_ARGS \
+      -kernel "$BZIMAGE" \
+      -initrd "$MULTI" \
+      -append "console=ttyS0 rdinit=/init"
+    ;;
+
+  --all)
+      echo "Booting from ISO with boot menu..."
+      ${QEMU} -cdrom ${ISO} \
+              -boot d \
+              -m 512M \
+              -nographic \
+              -serial mon:stdio
+      ;;
+
+  *)
+    usage
+    ;;
+esac
