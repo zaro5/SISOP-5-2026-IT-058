@@ -403,7 +403,7 @@ echo "[+] Done! Backup saved as: ${BACKUP_NAME}"
 
 Selanjutnya buatlah file `qemu.sh`, file ini berfungsi untuk menjalankan OS yang sudah dibuat dengan emulator QEMU. File ini bisa dijalankan dengan `-- single`, `--multi`, dan `--all`.
 
-
+```c
 #!/bin/bash
 set -e
 
@@ -451,3 +451,4 @@ case "$1" in
     usage
     ;;
 esac
+```
