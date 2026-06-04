@@ -454,5 +454,31 @@ esac
 ```
 
 # Output
-
+1. Install `Linux-6.1.1` and extract the files
+   ![alt text](assets/1_a_linux.jpeg)
+2. .config
+   ![alt text](assets/1_b_config.jpeg)
+3. Run the files (kernel.sh, multi.sh, single.sh, iso.sh)
+   ![alt text](assets/1_c_compile.jpeg)
+4. ./qemu.sh --single
+   ![alt text](assets/1_d_q-single.jpeg)
+5. ./qemu.sh --multi
+   ![alt text](assets/1_e_multi-1.jpeg)
+   ![alt text](assets/1_e_multi-2.jpeg)
+   ![alt text](assets/1_e_multi-3.jpeg)
+   ![alt text](assets/1_e_multi-4.jpeg)
+   ![alt text](assets/1_e_multi-5.jpeg)
+7. ./qemu.sh --all
+   ![alt text](assets/1_f_all.jpeg)
+8. ./backup.sh
+   ![alt text](assets/1_g_backup.jpeg)
+9. Check ping 8.8.8.8
+   ![alt text](assets/1_h_ping.jpeg)
+10. wget url
+   ![alt text](assets/1_i_wget.jpeg)
+11. party
+   ![alt text](assets/1_j_party.jpeg)
+12. fusermount
+   ![alt text](assets/1_k_fuse.jpeg)
+   
 # Kendala
