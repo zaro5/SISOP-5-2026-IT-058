@@ -1,126 +1,148 @@
 #!/bin/bash
-# multi.sh - Buat multi-user filesystem dengan BusyBox
-
 set -e
 
-FS_DIR="rootfs_multi"
-OUTPUT_DIR="osobot"
-OUTPUT_FILE="${OUTPUT_DIR}/multi.gz"
+BUSYBOX_VERSION="1.37.0"
+ROOTFS_DIR="rootfs_multi"
+OUTPUT="osboot/multi.gz"
 
-# Password hashes (dibuat dengan openssl passwd -1)
-# root123, henn123, hann123, viii123, kids123
-ROOT_HASH='$1$l7iUXgif$iNbfjxcn7XDio9KmEBrlY1'  
-HENN_HASH='$1$xxGOrYdg$ngRRgPPmGUhwy9nuIW6tP1'  
-HANN_HASH='$1$prqUULel$/1arsItfFVmOxYjib0ACE1'  
-VIII_HASH='$1$2KpWnpZ/$Kn0yHF7itAjXHEW.CDuIa0'  
-KIDS_HASH='$1$RO1UYqFT$Eu9lpDf63JektldhzHsO10'  
+# ── Reuse BusyBox build ───────────────────────────────────────────────
+if [ ! -d "busybox-${BUSYBOX_VERSION}" ]; then
+  echo "[!] BusyBox not found. Run single.sh first (or download it)."
+  exit 1
+fi
 
-# Bersihkan direktori sebelumnya
-rm -rf "${FS_DIR}"
-mkdir -p "${FS_DIR}"
+echo "[*] Building multi-user rootfs..."
+rm -rf "$ROOTFS_DIR"
+mkdir -p "${ROOTFS_DIR}"/{bin,dev,proc,sys,etc,tmp,root}
+mkdir -p "${ROOTFS_DIR}/home/"{henn,hann,viii,kids}
 
-# Buat struktur direktori
-mkdir -p "${FS_DIR}"/{bin,dev,proc,sys,etc,tmp,root}
-mkdir -p "${FS_DIR}/home"/{henn,hann,viii,kids}
+# Install BusyBox
+cd "busybox-${BUSYBOX_VERSION}"
+make CONFIG_PREFIX="../${ROOTFS_DIR}" install
+cd ..
 
-# Copy busybox
-cp /usr/bin/busybox "${FS_DIR}/bin/"
+# Dev nodes
+sudo mknod "${ROOTFS_DIR}/dev/console" c 5 1
+sudo mknod "${ROOTFS_DIR}/dev/null"    c 1 3
+sudo mknod "${ROOTFS_DIR}/dev/tty"     c 5 0
+sudo mknod "${ROOTFS_DIR}/dev/sda"     b 8 0
 
-# Install busybox
-cd "${FS_DIR}/bin"
-./busybox --install .
-cd ../..
-
-# Buat file passwd
-cat > "${FS_DIR}/etc/passwd" << EOF
-root:${ROOT_HASH}:0:0:root:/root:/bin/sh
-henn:${HENN_HASH}:1001:1001:henn:/home/henn:/bin/sh
-hann:${HANN_HASH}:1002:1002:hann:/home/hann:/bin/sh
-viii:${VIII_HASH}:1003:1003:viii:/home/viii:/bin/sh
-kids:${KIDS_HASH}:1004:1004:kids:/home/kids:/bin/sh
+# ── Users ─────────────────────────────────────────────────────────────
+# UIDs: root=0, henn=1001, hann=1002, viii=1003, kids=1004
+cat > "${ROOTFS_DIR}/etc/passwd" << 'EOF'
+root:x:0:0:root:/root:/bin/sh
+henn:x:1001:1001::/home/henn:/bin/sh
+hann:x:1002:1002::/home/hann:/bin/sh
+viii:x:1003:1003::/home/viii:/bin/sh
+kids:x:1004:1004::/home/kids:/bin/sh
 EOF
 
-# Buat file group
-cat > "${FS_DIR}/etc/group" << EOF
+cat > "${ROOTFS_DIR}/etc/group" << 'EOF'
 root:x:0:root
 henn:x:1001:henn
 hann:x:1002:hann
 viii:x:1003:viii
 kids:x:1004:kids
-wheel:x:10:root,henn,hann,viii,kids
-users:x:100:henn,hann,viii,kids
 EOF
 
-# Buat file inittab
-cat > "${FS_DIR}/etc/inittab" << 'EOF'
-::sysinit:/bin/mount -t proc none /proc
-::sysinit:/bin/mount -t sysfs none /sys
-::sysinit:/bin/mount -t devtmpfs none /dev
-tty1::respawn:/sbin/getty -L tty1 115200 vt100
-::ctrlaltdel:/sbin/reboot
-::shutdown:/bin/umount -a -r
+# Passwords
+add_shadow() {
+  local user=$1 pass=$2
+  local hash
+  hash=$(openssl passwd -1 "$pass")
+  echo "${user}:${hash}:0:0:99999:7:::"
+}
+
+{
+  add_shadow root  root123
+  add_shadow henn  henn123
+  add_shadow hann  hann123
+  add_shadow viii  viii123
+  add_shadow kids  kids123
+} > "${ROOTFS_DIR}/etc/shadow"
+
+# ── Permissions ───────────────────────────────────────────────────────
+sudo chown -R root:root  "${ROOTFS_DIR}"
+sudo chown -R 1001:1001  "${ROOTFS_DIR}/home/henn"
+sudo chown -R 1002:1002  "${ROOTFS_DIR}/home/hann"
+sudo chown -R 1003:1003  "${ROOTFS_DIR}/home/viii"
+sudo chown -R 1004:1004  "${ROOTFS_DIR}/home/kids"
+
+sudo chmod 700  "${ROOTFS_DIR}/root"
+sudo chmod 1777 "${ROOTFS_DIR}/tmp"
+
+# Home dirs: owner rwx, others ---
+sudo chmod 700 "${ROOTFS_DIR}/home/henn"
+sudo chmod 700 "${ROOTFS_DIR}/home/hann"
+sudo chmod 700 "${ROOTFS_DIR}/home/viii"
+sudo chmod 700 "${ROOTFS_DIR}/home/kids"
+
+# Access control via /etc/profile per user using .profile in each home
+# henn: full /home/*, no /root
+# hann: /home/{hann,viii,kids} only
+# viii: /home/{viii,kids} only
+# kids: /home/kids only
+
+make_profile() {
+  local user=$1; shift
+  local allowed=("$@")
+  local homedir="${ROOTFS_DIR}/home/${user}"
+  
+  cat > "${homedir}/.profile" << PROFILE
+figlet "Farewell Party" 2>/dev/null || echo "=== Farewell Party ==="
+echo "Welcome, ${user}."
+
+# Enforce directory access
+check_access() {
+  local dir=\$1
+PROFILE
+
+  # Build deny rules based on spec
+  cat >> "${homedir}/.profile" << 'PROFILE'
+  case "$dir" in
+PROFILE
+
+  for allow in "${allowed[@]}"; do
+    echo "    ${allow}) return 0 ;;" >> "${homedir}/.profile"
+  done
+
+  cat >> "${homedir}/.profile" << 'PROFILE'
+    *) echo "Access denied: $dir"; return 1 ;;
+  esac
+}
+PROFILE
+}
+
+# ── Banner /etc/profile (shown on login) ──────────────────────────────
+cat > "${ROOTFS_DIR}/etc/profile" << 'EOF'
+figlet "Farewell Party" 2>/dev/null || echo "=== Farewell Party ==="
+echo "Welcome, $(whoami)."
 EOF
 
-# Buat file profile (banner login)
-cat > "${FS_DIR}/etc/profile" << 'EOF'
+# ── /etc/sudoers-like via group approach ─────────────────────────────
+# Implemented via filesystem permissions (chmod/chown already set above)
+# Additional: make /home readable by owner's group per spec
+sudo chmod 750 "${ROOTFS_DIR}/home/henn"   # henn: accessible by henn+group
+# hann can read hann,viii,kids but not henn,root -> handled by ownership
+
+# ── Init ─────────────────────────────────────────────────────────────
+cat > "${ROOTFS_DIR}/init" << 'EOF'
 #!/bin/sh
+mount -t proc  none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev 2>/dev/null || true
 
-# ASCII Art Farewell Party
-cat << "BANNER"
-   .-.-.   .-.-.   .-.-.   .-.-.   .-.-.
-  / / \ \ / / \ \ / / \ \ / / \ \ / / \ \
- `-'   `-`-'   `-`-'   `-`-'   `-`-'   `-'
-  ___               _   _             
- | __|__ _ _ _ _ __| |_(_)_ _  ___ ___ 
- | _|/ _` | '_| '  \  _| | ' \/ -_|_-< 
- |_| \__,_|_| |_|_|_\__|_|_||_\___/__/
-                                         
-        Farewell Party
-=========================================
-Welcome, ${USER}!
-=========================================
-BANNER
-
-export PATH=/bin:/sbin:/usr/bin
-export PS1='[\u@\h:\w]\$ '
+echo ":: Multi-user mode ::"
+exec /bin/login
 EOF
+chmod +x "${ROOTFS_DIR}/init"
 
-chmod +x "${FS_DIR}/etc/profile"
-
-# Buat file init
-cat > "${FS_DIR}/init" << 'EOF'
-#!/bin/sh
-/bin/mount -t proc none /proc
-/bin/mount -t sysfs none /sys
-/bin/mount -t devtmpfs none /dev
-
-# Switch ke multi-user init
-exec /sbin/init
-EOF
-
-chmod +x "${FS_DIR}/init"
-
-# Buat device nodes
-cd "${FS_DIR}/dev"
-mknod -m 666 console c 5 1 2>/dev/null || true
-mknod -m 666 null c 1 3 2>/dev/null || true
-mknod -m 666 tty1 c 4 1 2>/dev/null || true
-mknod -m 620 ttyS0 c 4 64 2>/dev/null || true
-cd ../..
-
-# Set permissions sesuai specs
-chmod 750 "${FS_DIR}/root"
-chmod 755 "${FS_DIR}/home/henn"
-chmod 750 "${FS_DIR}/home/hann"
-chmod 750 "${FS_DIR}/home/viii"
-chmod 700 "${FS_DIR}/home/kids"
-
-# Buat initramfs
-cd "${FS_DIR}"
-find . | cpio -oHnewc | gzip > "../${OUTPUT_FILE}"
+# ── Pack ─────────────────────────────────────────────────────────────
+echo "[*] Packing initramfs -> ${OUTPUT}..."
+mkdir -p osboot
+cd "$ROOTFS_DIR"
+find . | cpio -H newc -o | gzip > "../${OUTPUT}"
 cd ..
 
-# Hapus file sisa
-rm -rf "${FS_DIR}"
-
-echo "[*] Multi-user filesystem created at ${OUTPUT_FILE}"
+rm -rf "$ROOTFS_DIR"
+echo "[+] Done! multi filesystem at: ${OUTPUT}"

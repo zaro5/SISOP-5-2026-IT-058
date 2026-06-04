@@ -1,52 +1,36 @@
 #!/bin/bash
-# kernel.sh - Download dan compile kernel Linux 6.1.1
-
-set -e  # stop on error
+set -e
 
 KERNEL_VERSION="6.1.1"
-KERNEL_TAR="linux-${KERNEL_VERSION}.tar.xz"
-KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/${KERNEL_TAR}"
 KERNEL_DIR="linux-${KERNEL_VERSION}"
-OUTPUT_DIR="osobot"
+KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz"
+OUTPUT="osboot/bzImage"
 
-# Buat direktori output
-mkdir -p "${OUTPUT_DIR}"
-
-# Download kernel jika belum ada
-if [ ! -f "${KERNEL_TAR}" ]; then
-    echo "[*] Downloading kernel ${KERNEL_VERSION}..."
-    wget "${KERNEL_URL}"
+echo "[*] Downloading Linux kernel ${KERNEL_VERSION}..."
+if [ ! -f "linux-${KERNEL_VERSION}.tar.xz" ]; then
+  wget "$KERNEL_URL"
 fi
 
-# Extract kernel
-if [ ! -d "${KERNEL_DIR}" ]; then
-    echo "[*] Extracting kernel..."
-    tar -xf "${KERNEL_TAR}"
+echo "[*] Extracting..."
+if [ ! -d "$KERNEL_DIR" ]; then
+  tar -xf "linux-${KERNEL_VERSION}.tar.xz"
 fi
 
-# Masuk ke direktori kernel
-cd "${KERNEL_DIR}"
+echo "[*] Configuring kernel..."
+cd "$KERNEL_DIR"
 
-# Bersihkan kompilasi sebelumnya
-make mrproper
-
-# Copy .config jika ada, atau gunakan default
 if [ -f "../.config" ]; then
-    cp ../.config .config
+  cp "../.config" .config
+  make olddefconfig
 else
-    # Gunakan konfigurasi minimal, lalu menuconfig opsional
-    make tinyconfig
+  make defconfig
 fi
 
-# Kompilasi kernel
 echo "[*] Compiling kernel (this may take a while)..."
-make -j$(nproc) CC="gcc -std=gnu89"
+make -j$(nproc) KCFLAGS="-Wno-error" bzImage
 
-# Copy bzImage ke output
-cp arch/x86/boot/bzImage "../${OUTPUT_DIR}/"
+echo "[*] Copying bzImage to osboot/..."
+mkdir -p ../osboot
+cp arch/x86/boot/bzImage "../${OUTPUT}"
 
-echo "[*] Kernel built successfully at ${OUTPUT_DIR}/bzImage"
-
-# Cleanup (opsional, sesuai soal: hapus file sisa)
-cd ..
-rm -rf "${KERNEL_DIR}" "${KERNEL_TAR}"
+echo "[+] Done! Kernel image at: ${OUTPUT}"

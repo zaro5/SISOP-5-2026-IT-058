@@ -1,79 +1,44 @@
-
 #!/bin/bash
-# iso.sh - Buat bootable ISO dengan isolinux
-
 set -e
 
-OUTPUT_DIR="osobot"
 ISO_DIR="iso_build"
-OUTPUT_ISO="${OUTPUT_DIR}/farewell.iso"
+OUTPUT="osboot/farewell.iso"
+BZIMAGE="osboot/bzImage"
+SINGLE="osboot/single.gz"
+MULTI="osboot/multi.gz"
 
-# Pastikan tools terinstall
-if ! command -v xorriso &> /dev/null; then
-    echo "[!] xorriso not found. Installing..."
-    sudo apt install -y xorriso isolinux
-fi
+# Check files exist
+for f in "$BZIMAGE" "$SINGLE" "$MULTI"; do
+  [ -f "$f" ] || { echo "[!] Missing: $f"; exit 1; }
+done
 
-# Buat struktur ISO
-rm -rf "${ISO_DIR}"
-mkdir -p "${ISO_DIR}/boot/isolinux"
-mkdir -p "${ISO_DIR}/boot/syslinux"
+echo "[*] Building ISO structure..."
+rm -rf "$ISO_DIR"
+mkdir -p "${ISO_DIR}/boot/grub"
+mkdir -p "${ISO_DIR}/boot/fs"
 
-# Copy kernel dan initramfs
-cp "${OUTPUT_DIR}/bzImage" "${ISO_DIR}/boot/vmlinuz"
-cp "${OUTPUT_DIR}/single.gz" "${ISO_DIR}/boot/initrd.single"
-cp "${OUTPUT_DIR}/multi.gz" "${ISO_DIR}/boot/initrd.multi"
+cp "$BZIMAGE" "${ISO_DIR}/boot/"
+cp "$SINGLE"  "${ISO_DIR}/boot/fs/"
+cp "$MULTI"   "${ISO_DIR}/boot/fs/"
 
-# Buat isolinux.cfg untuk menu boot
-cat > "${ISO_DIR}/boot/isolinux/isolinux.cfg" << 'EOF'
-DEFAULT menu
-PROMPT 0
-TIMEOUT 50
+# GRUB config — boot menu for single and multi
+cat > "${ISO_DIR}/boot/grub/grub.cfg" << 'EOF'
+set timeout=10
+set default=0
 
-MENU TITLE Farewell Party Boot Menu
+menuentry "Farewell Party - Single User" {
+  linux  /boot/bzImage quiet
+  initrd /boot/fs/single.gz
+}
 
-LABEL single
-    MENU LABEL Boot Single-User Mode
-    LINUX /boot/vmlinuz
-    INITRD /boot/initrd.single
-    APPEND console=tty1
-
-LABEL multi
-    MENU LABEL Boot Multi-User Mode
-    LINUX /boot/vmlinuz
-    INITRD /boot/initrd.multi
-    APPEND console=tty1
-
-LABEL hdt
-    MENU LABEL Hardware Detection Tool
-    COM32 hdt.c32
-
-LABEL reboot
-    MENU LABEL Reboot
-    COM32 reboot.c32
-
-LABEL poweroff
-    MENU LABEL Power Off
-    COM32 poweroff.c32
-
-MENU SEPARATOR
-MENU END
+menuentry "Farewell Party - Multi User" {
+  linux  /boot/bzImage quiet
+  initrd /boot/fs/multi.gz
+}
 EOF
 
-# Copy isolinux binaries
-cp /usr/lib/ISOLINUX/isolinux.bin "${ISO_DIR}/boot/isolinux/" 2>/dev/null || true
-cp /usr/lib/syslinux/modules/bios/*.c32 "${ISO_DIR}/boot/isolinux/" 2>/dev/null || true
+echo "[*] Creating ISO: ${OUTPUT}..."
+grub-mkrescue -o "$OUTPUT" "$ISO_DIR" 2>/dev/null
 
-# Buat ISO dengan xorriso
-xorriso -as mkisofs \
-    -o "${OUTPUT_ISO}" \
-    -b boot/isolinux/isolinux.bin \
-    -c boot/isolinux/boot.cat \
-    -no-emul-boot -boot-load-size 4 -boot-info-table \
-    -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
-    "${ISO_DIR}"
-
-# Hapus file sisa
-rm -rf "${ISO_DIR}"
-
-echo "[*] Bootable ISO created at ${OUTPUT_ISO}"
+rm -rf "$ISO_DIR"
+echo "[+] Done! ISO at: ${OUTPUT}"

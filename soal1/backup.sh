@@ -1,25 +1,34 @@
 #!/bin/bash
-# backup.sh - Backup semua hasil build ke zip
-
 set -e
 
-OUTPUT_DIR="osobot"
-BACKUP_NAME="farewell_backup_$(date +%d%m%Y-%H%M%S).zip"
+TIMESTAMP=$(date +"%d%m%Y-%H%M%S")
+BACKUP_NAME="farewell_backup_[${TIMESTAMP}].zip"
+OUTPUT_DIR="osboot"
 
-# Pindah ke direktori osobot
-cd "${OUTPUT_DIR}"
+FILES=(
+  "${OUTPUT_DIR}/bzImage"
+  "${OUTPUT_DIR}/single.gz"
+  "${OUTPUT_DIR}/multi.gz"
+  "${OUTPUT_DIR}/farewell.iso"
+)
 
-# Zip semua file
-zip -9 "../${BACKUP_NAME}" \
-    bzImage \
-    single.gz \
-    multi.gz \
-    farewell.iso 2>/dev/null || true
+echo "[*] Checking files..."
+MISSING=0
+for f in "${FILES[@]}"; do
+  if [ ! -f "$f" ]; then
+    echo "[!] Missing: $f"
+    MISSING=1
+  fi
+done
+[ $MISSING -eq 1 ] && { echo "[!] Some files missing. Aborting."; exit 1; }
 
-# Hapus file asli setelah backup (sesuai specs)
-rm -f bzImage single.gz multi.gz farewell.iso
+echo "[*] Creating backup: ${BACKUP_NAME}"
+zip "$BACKUP_NAME" "${FILES[@]}"
 
-cd ..
+echo "[*] Removing archived files..."
+for f in "${FILES[@]}"; do
+  rm -f "$f"
+  echo "    Removed: $f"
+done
 
-echo "[*] Backup created: ${BACKUP_NAME}"
-echo "[*] Original build files deleted from osobot/"
+echo "[+] Done! Backup saved as: ${BACKUP_NAME}"
