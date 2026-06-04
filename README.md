@@ -3,7 +3,7 @@
 ## Member
 | No | Nama Lengkap | NRP |
 |---|---|---|
-| 01 | [Nama Anda] | [NRP Anda] |
+| 01 | Azita Zahwa Zahida Asmoro | 5027251058 |
 
 ## Reporting
 
