@@ -452,3 +452,7 @@ case "$1" in
     ;;
 esac
 ```
+
+# Output
+
+# Kendala
